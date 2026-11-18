@@ -6,6 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     automake autopoint gettext patch make gcc g++ libltdl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir buildozer==1.6.0 cython
+# Устанавливаем Buildozer, Cython строго 0.29.34 и вспомогательные пакеты
+RUN pip install --no-cache-dir \
+    buildozer==1.6.0 \
+    cython==0.29.34 \
+    setuptools \
+    legacy-cgi
 
 WORKDIR /home/user/hostcwd
