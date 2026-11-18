@@ -32,9 +32,7 @@ jobs:
         id: buildozer
         with:
           command: buildozer android debug
-          buildozer_version: stable
-          # Указываем альтернативный, рабочий источник образа
-          docker_image: ghcr.io/kivy/buildozer:latest
+          buildozer_version: "1.5.0" # Фиксируем рабочую версию
 
       # --- Загрузка готового APK как артефакта ---
       - name: Upload APK artifact
