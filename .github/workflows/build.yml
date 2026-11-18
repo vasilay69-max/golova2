@@ -13,6 +13,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Очистка кэша p4a, чтобы не использовать старые несовместимые артефакты
+      - name: Clean Buildozer cache
+        run: |
+          rm -rf ~/.buildozer/android/packages
+          rm -rf ~/.buildozer/android/platform/build-*
+
       - name: Build custom Buildozer image
         run: docker build -t my-buildozer -f Dockerfile.buildozer .
 
