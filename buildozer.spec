@@ -1,11 +1,19 @@
-FROM python:3.12-slim
+[app]
+title = Голова под контролем
+package.name = headache
+package.domain = ru.student
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git zip unzip openjdk-21-jdk-headless autoconf libtool pkg-config \
-    zlib1g-dev libncurses-dev libtinfo6 cmake \
-    libffi-dev libssl-dev automake autopoint gettext patch \
-    && rm -rf /var/lib/apt/lists/*
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,ttf
 
-RUN pip install --no-cache-dir buildozer cython
+version = 0.1
+requirements = python3,kivy,sqlite3
 
-WORKDIR /home/user/hostcwd
+android.accept_sdk_license = True
+
+orientation = portrait
+fullscreen = 0
+
+[buildozer]
+log_level = 2
+warn_on_root = 0
