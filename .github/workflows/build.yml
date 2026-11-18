@@ -7,25 +7,12 @@ on:
 
 jobs:
   build-android:
-    name: Build for Android
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Cache Buildozer global directory
-        uses: actions/cache@v4
-        with:
-          path: ~/.buildozer
-          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
-
-      - name: Cache Buildozer local directory
-        uses: actions/cache@v4
-        with:
-          path: .buildozer
-          key: buildozer-local-${{ hashFiles('buildozer.spec') }}
-
-      - name: Build custom Buildozer image
+      - name: Build custom Buildozer environment
         run: docker build -t my-buildozer -f Dockerfile.buildozer .
 
       - name: Build APK with Buildozer
@@ -37,7 +24,7 @@ jobs:
             -v "$HOME/.buildozer":/home/user/.buildozer \
             my-buildozer buildozer android debug
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: headache-apk
