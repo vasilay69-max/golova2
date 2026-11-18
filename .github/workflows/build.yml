@@ -27,12 +27,15 @@ jobs:
           key: buildozer-local-${{ hashFiles('buildozer.spec') }}
 
       # --- Сборка APK ---
-     - name: Build with Buildozer
-        uses: guysoft/buildozer-action@master   # или @v1, если тег существует
-        id: buildozer
-        with:
-          command: buildozer android debug
+           - name: Build custom Buildozer image
+        run: docker build -t my-buildozer -f Dockerfile.buildozer .
 
+      - name: Build APK with Buildozer
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/home/user/hostcwd \
+            -v "$HOME/.buildozer":/home/user/.buildozer \
+            my-buildozer buildozer android debug
       # --- Загрузка готового APK как артефакта ---
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
