@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # позволяет запускать сборку вручную кнопкой
+  workflow_dispatch:
 
 jobs:
   build-android:
@@ -13,7 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Кэширование, чтобы ускорить повторные сборки ---
       - name: Cache Buildozer global directory
         uses: actions/cache@v4
         with:
@@ -26,19 +25,20 @@ jobs:
           path: .buildozer
           key: buildozer-local-${{ hashFiles('buildozer.spec') }}
 
-      # --- Сборка APK ---
-           - name: Build custom Buildozer image
+      - name: Build custom Buildozer image
         run: docker build -t my-buildozer -f Dockerfile.buildozer .
 
       - name: Build APK with Buildozer
         run: |
           docker run --rm \
+            -e HOME=/home/user \
+            -w /home/user/hostcwd \
             -v "${{ github.workspace }}":/home/user/hostcwd \
             -v "$HOME/.buildozer":/home/user/.buildozer \
             my-buildozer buildozer android debug
-      # --- Загрузка готового APK как артефакта ---
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: headache-apk
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
