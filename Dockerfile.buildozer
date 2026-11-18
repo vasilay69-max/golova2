@@ -3,7 +3,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git zip unzip openjdk-21-jdk-headless autoconf libtool pkg-config \
     zlib1g-dev libncurses-dev libtinfo6 cmake \
-    libffi-dev libssl-dev automake autopoint gettext \
+    libffi-dev libssl-dev automake autopoint gettext patch \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir buildozer cython
