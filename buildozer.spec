@@ -5,12 +5,12 @@ package.domain = ru.student
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf
 version = 0.1
-requirements = python3==3.10.9,hostpython3==3.10.9,kivy==2.3.1,sqlite3
+requirements = python3==3.11.16,hostpython3==3.11.16,kivy==2.3.1,sqlite3
 android.accept_sdk_license = True
-android.ndk = 27c
-android.api = 33
+android.ndk = 28c
+android.api = 36
 android.minapi = 24
-p4a.branch = master
+p4a.branch = develop
 orientation = portrait
 fullscreen = 0
 
