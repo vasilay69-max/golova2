@@ -1,1 +1,42 @@
+name: Build APK
 
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # позволяет запускать сборку вручную кнопкой
+
+jobs:
+  build-android:
+    name: Build for Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Кэширование, чтобы ускорить повторные сборки ---
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+
+      - name: Cache Buildozer local directory
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-local-${{ hashFiles('buildozer.spec') }}
+
+      # --- Сборка APK ---
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          buildozer_version: stable
+
+      # --- Загрузка готового APK как артефакта ---
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: headache-apk
+          path: ${{ steps.buildozer.outputs.filename }}
