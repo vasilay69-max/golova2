@@ -7,12 +7,13 @@ on:
 
 jobs:
   build-android:
+    name: Build for Android
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build custom Buildozer environment
+      - name: Build custom Buildozer image
         run: docker build -t my-buildozer -f Dockerfile.buildozer .
 
       - name: Build APK with Buildozer
@@ -24,7 +25,7 @@ jobs:
             -v "$HOME/.buildozer":/home/user/.buildozer \
             my-buildozer buildozer android debug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: headache-apk
