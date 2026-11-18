@@ -9,6 +9,9 @@ source.include_exts = py,png,jpg,kv,atlas,ttf
 version = 0.1
 requirements = python3,kivy,sqlite3
 
+# Автоматически принимать лицензии Android SDK
+android.accept_sdk_license = True
+
 orientation = portrait
 fullscreen = 0
 
