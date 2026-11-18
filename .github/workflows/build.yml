@@ -27,12 +27,11 @@ jobs:
           key: buildozer-local-${{ hashFiles('buildozer.spec') }}
 
       # --- Сборка APK ---
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+     - name: Build with Buildozer
+        uses: guysoft/buildozer-action@master   # или @v1, если тег существует
         id: buildozer
         with:
           command: buildozer android debug
-          buildozer_version: "1.5.0" # Фиксируем рабочую версию
 
       # --- Загрузка готового APK как артефакта ---
       - name: Upload APK artifact
