@@ -7,7 +7,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf
 
 version = 0.1
-requirements = python3,kivy,sqlite3
+requirements = python3==3.12.0,kivy,sqlite3
 
 android.accept_sdk_license = True
 
