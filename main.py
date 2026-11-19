@@ -11,6 +11,8 @@ from kivy.app import App
 from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.graphics import Color, Rectangle, Line
+from kivy.clock import Clock
+from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.checkbox import CheckBox
@@ -25,10 +27,10 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
 # === ЦВЕТА ===
-BG = (0.94, 0.95, 0.97, 1)      # Светло-серый фон (вместо черного)
-CARD = (1, 1, 1, 1)             # Белый для карточек
+BG = (0.94, 0.95, 0.97, 1)      # Светло-серый фон
+CARD = (1, 1, 1, 1)             # Белый
 INK = (0.12, 0.16, 0.27, 1)     # Темно-синий текст
-MUTED = (0.42, 0.46, 0.56, 1)
+MUTED = (0.42, 0.46, 0.56, 1)   # Серый текст
 ACC = (0.18, 0.35, 0.91, 1)     # Синий акцент
 LINE = (0.87, 0.89, 0.94, 1)
 GOOD = (0.12, 0.61, 0.42, 1)
@@ -58,10 +60,10 @@ HELP_TEXT = """ЧТО ДЕЛАТЬ В НАЧАЛЕ ПРИСТУПА
 
 def show_message(text, title="Сообщение"):
     box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
-    lab = Label(text=text, halign="center", valign="middle")
+    lab = Label(text=text, halign="center", valign="middle", color=INK)
     lab.bind(size=lambda inst, val: setattr(lab, "text_size", val))
     box.add_widget(lab)
-    btn = Button(text="OK", size_hint_y=None, height=dp(44))
+    btn = Button(text="OK", size_hint_y=None, height=dp(44), background_normal='', background_color=ACC, bold=True)
     pop = Popup(title=title, content=box, size_hint=(0.9, 0.4))
     btn.bind(on_release=pop.dismiss)
     box.add_widget(btn)
@@ -69,12 +71,9 @@ def show_message(text, title="Сообщение"):
 
 
 def fmt_ru(iso):
-    if not iso:
-        return ""
-    try:
-        d = dt.date.fromisoformat(iso)
-    except Exception:
-        return iso
+    if not iso: return ""
+    try: d = dt.date.fromisoformat(iso)
+    except Exception: return iso
     months = ["января", "февраля", "марта", "апреля", "мая", "июня",
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     return f"{d.day} {months[d.month - 1]} {d.year}"
@@ -99,6 +98,29 @@ def _mean(vals):
     return sum(vals) / len(vals) if vals else None
 
 
+# Кастомная кликабельная строка для чекбоксов
+class CheckRow(ButtonBehavior, BoxLayout):
+    def __init__(self, label_text, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'horizontal'
+        self.size_hint_y = None
+        self.height = dp(44)
+        self.spacing = dp(8)
+        self.cb = CheckBox(size_hint_x=None, width=dp(40), size_hint_y=None, height=dp(40))
+        self.add_widget(self.cb)
+        lbl = Label(text=label_text, color=INK, size_hint_x=1, halign="left", valign="middle", font_size="14sp")
+        lbl.bind(size=lambda s, v: setattr(s, 'text_size', (v[0], None)))
+        self.add_widget(lbl)
+        self.bind(on_release=self.toggle)
+        
+    def toggle(self, *args):
+        self.cb.active = not self.cb.active
+
+    @property
+    def active(self):
+        return self.cb.active
+
+
 class ChartWidget(Widget):
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -112,45 +134,54 @@ class ChartWidget(Widget):
     def _draw(self, *a):
         self.canvas.clear()
         w, h = self.width, self.height
-        if w < 40 or h < 40:
-            return
+        if w < 40 or h < 40: return
+            
         L, R, T, B = dp(36), dp(36), dp(14), dp(26)
         with self.canvas:
             Color(*CARD)
             Rectangle(pos=self.pos, size=self.size)
             Color(*LINE)
-            Line(rectangle=(self.x + L, self.y + B,
-                            w - L - R, h - T - B), width=1)
+            Line(rectangle=(self.x + L, self.y + B, w - L - R, h - T - B), width=1)
+            
             for v in (80, 120, 160):
                 y = self.y + B + (h - T - B) * (1 - (v - 60) / 120)
                 Color(*LINE)
                 Line(points=[self.x + L, y, self.x + w - R, y], width=1)
-            if not self.series:
-                return
+                
+            if not self.series: return
+                
             days = sorted(self.series.keys())[-30:]
             n = len(days)
-            if n < 2:
-                return
-            X = lambda i: self.x + L + (w - L - R) * (i + 0.5) / n
+            if n == 0: return
+                
+            X = lambda i: self.x + L + (w - L - R) * (i + 0.5) / max(n, 1)
             Yp = lambda v: self.y + B + (h - T - B) * (1 - (v - 60) / 120)
             Yb = lambda v: self.y + B + (h - T - B) * (1 - v / 10)
-            Color(*BAD[:3], 0.25)
-            bw = max(2, (w - L - R) / n * 0.32)
+            
+            bw = max(2, (w - L - R) / max(n, 1) * 0.32)
             for i, k in enumerate(days):
                 pain = self.series[k].get("pain")
                 if pain is not None:
                     y = Yb(pain)
-                    Rectangle(pos=(X(i) - bw, self.y + B),
-                              size=(bw * 2, y - self.y - B))
+                    Color(*BAD[:3], 0.25)
+                    Rectangle(pos=(X(i) - bw, self.y + B), size=(bw * 2, y - self.y - B))
+                    
             for key, col in (("sys", ACC), ("dia", (0.075, 0.643, 0.643, 1))):
-                Color(*col)
                 pts = []
                 for i, k in enumerate(days):
                     v = self.series[k].get(key)
-                    if v is not None:
-                        pts += [X(i), Yp(v)]
+                    if v is not None: pts += [X(i), Yp(v)]
+                        
                 if len(pts) >= 4:
+                    Color(*col)
                     Line(points=pts, width=dp(2))
+                    
+                Color(*col)
+                for i, k in enumerate(days):
+                    v = self.series[k].get(key)
+                    if v is not None:
+                        x, y = X(i), Yp(v)
+                        Line(circle=(x, y, dp(3)), width=dp(2))
 
 
 class Database:
@@ -172,37 +203,25 @@ class Database:
                 nausea INTEGER DEFAULT 0, medication TEXT, note TEXT,
                 bp_sys INTEGER, bp_dia INTEGER
             );
-            CREATE TABLE IF NOT EXISTS triggers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL
-            );
+            CREATE TABLE IF NOT EXISTS triggers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);
             CREATE TABLE IF NOT EXISTS episode_triggers (
                 episode_id INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
                 trigger_id INTEGER REFERENCES triggers(id),
                 PRIMARY KEY (episode_id, trigger_id)
             );
-            CREATE TABLE IF NOT EXISTS active (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                date TEXT, time TEXT
-            );
+            CREATE TABLE IF NOT EXISTS active (id INTEGER PRIMARY KEY CHECK (id = 1), date TEXT, time TEXT);
         """)
-        for n in CAUSES:
-            c.execute("INSERT OR IGNORE INTO triggers(name) VALUES (?)", (n,))
+        for n in CAUSES: c.execute("INSERT OR IGNORE INTO triggers(name) VALUES (?)", (n,))
         self.conn.commit()
 
     def add_episode(self, d, trig_ids):
         c = self.conn.cursor()
-        c.execute("""INSERT INTO episodes
-            (ts, type, intensity, side, duration_min, aura, effort,
-             nausea, medication, note, bp_sys, bp_dia)
+        c.execute("""INSERT INTO episodes (ts, type, intensity, side, duration_min, aura, effort, nausea, medication, note, bp_sys, bp_dia)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                  (d["ts"], d["type"], d["intensity"], d["side"],
-                   d["duration_min"], d["aura"], d["effort"], d["nausea"],
-                   d["medication"], d["note"], d.get("bp_sys"), d.get("bp_dia")))
+                  (d["ts"], d["type"], d["intensity"], d["side"], d["duration_min"], d["aura"], d["effort"], d["nausea"], d["medication"], d["note"], d.get("bp_sys"), d.get("bp_dia")))
         ep_id = c.lastrowid
         for tid in trig_ids:
-            c.execute("INSERT INTO episode_triggers(episode_id, trigger_id) "
-                      "VALUES (?, ?)", (ep_id, tid))
+            c.execute("INSERT INTO episode_triggers(episode_id, trigger_id) VALUES (?, ?)", (ep_id, tid))
         self.conn.commit()
         return ep_id
 
@@ -215,50 +234,34 @@ class Database:
             GROUP BY e.id ORDER BY e.ts DESC LIMIT ?
         """, (limit,)).fetchall()
 
-    def get_triggers(self):
-        return self.conn.execute(
-            "SELECT * FROM triggers ORDER BY name").fetchall()
+    def get_triggers(self): return self.conn.execute("SELECT * FROM triggers ORDER BY name").fetchall()
 
     def add_trigger(self, name):
         self.conn.execute("INSERT OR IGNORE INTO triggers(name) VALUES (?)", (name,))
         self.conn.commit()
-        return self.conn.execute(
-            "SELECT id FROM triggers WHERE name = ?", (name,)).fetchone()["id"]
+        return self.conn.execute("SELECT id FROM triggers WHERE name = ?", (name,)).fetchone()["id"]
 
     def stats(self):
-        return self.conn.execute("""
-            SELECT COUNT(*) AS n, AVG(intensity) AS avg_int,
-                   AVG(duration_min) AS avg_dur,
-                   SUM(CASE WHEN medication != '' THEN 1 ELSE 0 END) AS with_med
-            FROM episodes
-        """).fetchone()
+        return self.conn.execute("SELECT COUNT(*) AS n, AVG(intensity) AS avg_int, AVG(duration_min) AS avg_dur, SUM(CASE WHEN medication != '' THEN 1 ELSE 0 END) AS with_med FROM episodes").fetchone()
 
     def trigger_analysis(self):
         total = self.conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0]
         rows = self.conn.execute("""
             SELECT t.name, COUNT(DISTINCT et.episode_id) AS cnt
-            FROM triggers t
-            LEFT JOIN episode_triggers et ON et.trigger_id = t.id
+            FROM triggers t LEFT JOIN episode_triggers et ON et.trigger_id = t.id
             GROUP BY t.id ORDER BY cnt DESC
         """).fetchall()
-        return [(r["name"], r["cnt"], total,
-                 r["cnt"] / total if total else 0) for r in rows]
+        return [(r["name"], r["cnt"], total, r["cnt"] / total if total else 0) for r in rows]
 
     def bp_readings(self, day):
         out = []
-        for e in self.conn.execute(
-                "SELECT ts, bp_sys, bp_dia FROM episodes "
-                "WHERE substr(ts, 1, 10) = ? AND bp_sys IS NOT NULL",
-                (day,)).fetchall():
+        for e in self.conn.execute("SELECT ts, bp_sys, bp_dia FROM episodes WHERE substr(ts, 1, 10) = ? AND bp_sys IS NOT NULL", (day,)).fetchall():
             out.append((e["ts"][11:16], e["bp_sys"], e["bp_dia"]))
         return sorted(out)
 
     def bp_summary(self):
-        days = [r["d"] for r in self.conn.execute(
-            "SELECT DISTINCT substr(ts, 1, 10) AS d FROM episodes "
-            "WHERE bp_sys IS NOT NULL ORDER BY d DESC LIMIT 30").fetchall()]
-        if not days:
-            return "Давление: измерений пока нет."
+        days = [r["d"] for r in self.conn.execute("SELECT DISTINCT substr(ts, 1, 10) AS d FROM episodes WHERE bp_sys IS NOT NULL ORDER BY d DESC LIMIT 30").fetchall()]
+        if not days: return "Давление: измерений пока нет."
         last_day = days[0]
         t, s, d = self.bp_readings(last_day)[-1]
         s_txt = f"Последнее: {bp_str(s, d)} ({fmt_ru(last_day)}"
@@ -267,8 +270,7 @@ class Database:
         for i in range(7):
             k = (dt.date.today() - dt.timedelta(days=i)).isoformat()
             week += self.bp_readings(k)
-        if week:
-            s_txt += f"\nСреднее за 7 дней: {bp_str(_mean([x[1] for x in week]), _mean([x[2] for x in week]))}"
+        if week: s_txt += f"\nСреднее за 7 дней: {bp_str(_mean([x[1] for x in week]), _mean([x[2] for x in week]))}"
         return s_txt
 
     def daily_series(self):
@@ -280,15 +282,11 @@ class Database:
             if e["bp_sys"] and e["bp_dia"]:
                 x["sys"].append(e["bp_sys"])
                 x["dia"].append(e["bp_dia"])
-        return {k: {"sys": _mean(v["sys"]), "dia": _mean(v["dia"]),
-                    "pain": max(v["pain"]) if v["pain"] else None}
-                for k, v in sorted(d.items())}
+        return {k: {"sys": _mean(v["sys"]), "dia": _mean(v["dia"]), "pain": max(v["pain"]) if v["pain"] else None} for k, v in sorted(d.items())}
 
     def set_active(self, date=None, time=None):
         self.conn.execute("DELETE FROM active")
-        if date:
-            self.conn.execute("INSERT INTO active(id, date, time) "
-                              "VALUES (1, ?, ?)", (date, time))
+        if date: self.conn.execute("INSERT INTO active(id, date, time) VALUES (1, ?, ?)", (date, time))
         self.conn.commit()
 
     def get_active(self):
@@ -297,37 +295,29 @@ class Database:
 
     def summary_7d(self):
         today = dt.date.today()
-        def rng(a, b):
-            return [(today - dt.timedelta(days=i)).isoformat() for i in range(a, b + 1)]
+        def rng(a, b): return [(today - dt.timedelta(days=i)).isoformat() for i in range(a, b + 1)]
         cur = rng(0, 6)
         prev = rng(7, 13)
         ser = self.daily_series()
-        def pain(days):
-            vals = [ser[k]["pain"] for k in days if k in ser and ser[k]["pain"] is not None]
-            return _mean(vals)
-        def count(days):
-            return sum(1 for e in self.get_episodes() if e["ts"][:10] in days)
+        def pain(days): return _mean([ser[k]["pain"] for k in days if k in ser and ser[k]["pain"] is not None])
+        def count(days): return sum(1 for e in self.get_episodes() if e["ts"][:10] in days)
         f = lambda v: f"{v:.1f}" if v is not None else "—"
-        return (f"Боль 0–10: {f(pain(prev))} → {f(pain(cur))}\n"
-                f"Приступов: {count(prev)} → {count(cur)}")
+        return f"Боль 0–10: {f(pain(prev))} → {f(pain(cur))}\nПриступов: {count(prev)} → {count(cur)}"
 
     def advice(self):
         tips = []
         eps = self.get_episodes(limit=2000)
         last = [e for e in eps if e["ts"][:10] > (dt.date.today() - dt.timedelta(days=8)).isoformat()]
         hi = [e for e in last if e["bp_sys"] and (e["bp_sys"] >= 140 or (e["bp_dia"] or 0) >= 90)]
-        if len(hi) >= 2:
-            tips.append(f"Давление 140/90+ в {len(hi)} эпизодах за неделю — покажите записи терапевту.")
+        if len(hi) >= 2: tips.append(f"Давление 140/90+ в {len(hi)} эпизодах за неделю — покажите записи терапевту.")
         trg = {}
         for e in eps:
             for t in (e["triggers"] or "").split(", "):
                 if t: trg[t] = trg.get(t, 0) + 1
         if trg:
             top = max(trg.items(), key=lambda kv: kv[1])
-            if top[1] >= 3:
-                tips.append(f"Чаще всего приступы совпадают с фактором «{top[0]}» ({top[1]} раз).")
-        if not tips:
-            tips.append("Пока недостаточно данных. Вносите записи, и здесь появятся подсказки.")
+            if top[1] >= 3: tips.append(f"Чаще всего приступы совпадают с фактором «{top[0]}» ({top[1]} раз).")
+        if not tips: tips.append("Пока недостаточно данных. Вносите записи, и здесь появятся подсказки.")
         return "\n".join("• " + t for t in tips)
 
 
@@ -355,14 +345,15 @@ class MainScreen(Screen):
 
         act = BoxLayout(size_hint_y=None, height=dp(38))
         act.add_widget(Label(text="История приступов", bold=True, font_size="15sp", color=INK, halign="left"))
-        add_btn = Button(text="+ Записать", size_hint_x=None, width=dp(140), background_color=ACC, bold=True)
+        add_btn = Button(text="+ Записать", size_hint_x=None, width=dp(130), background_normal='', background_color=ACC, bold=True)
         add_btn.bind(on_release=lambda *a: setattr(self.manager, "current", "new"))
         act.add_widget(add_btn)
         root.add_widget(act)
 
         head = BoxLayout(size_hint_y=None, height=dp(28), spacing=dp(4))
-        for txt, wdt in (("Дата", 0.32), ("Характер", 0.22), ("Боль", 0.14), ("Длит.", 0.16), ("Давл.", 0.16)):
+        for txt, wdt in (("Дата", 0.30), ("Характер", 0.22), ("Боль", 0.14), ("Длит.", 0.16), ("Давл.", 0.14)):
             head.add_widget(Label(text=txt, bold=True, font_size="11sp", color=MUTED, size_hint_x=wdt))
+        head.add_widget(Label(text="", size_hint_x=None, width=dp(30)))
         root.add_widget(head)
 
         scroll = ScrollView()
@@ -373,7 +364,7 @@ class MainScreen(Screen):
 
         bottom = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(6))
         for txt, target in (("Анализ", "analysis"), ("Динамика", "dynamic"), ("Помощь", "help"), ("Отчёт", "report")):
-            b = Button(text=txt)
+            b = Button(text=txt, background_normal='', background_color=LIGHT, color=INK)
             b.bind(on_release=lambda *a, t=target: setattr(self.manager, "current", t))
             bottom.add_widget(b)
         root.add_widget(bottom)
@@ -390,6 +381,7 @@ class MainScreen(Screen):
         if not eps:
             self.table.add_widget(Label(text="Приступов пока нет.\nНажмите «+ Записать».", color=MUTED, size_hint_y=None, height=dp(90)))
             return
+            
         for e in eps:
             row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(4))
             color = (0.99, 0.91, 0.91, 1) if e["intensity"] >= 7 else (1, 0.96, 0.86, 1) if e["intensity"] >= 4 else (0.94, 0.97, 1, 1)
@@ -397,12 +389,68 @@ class MainScreen(Screen):
                 Color(*color)
                 r = Rectangle(pos=row.pos, size=row.size)
             row.bind(pos=lambda inst, val, rect=r: setattr(rect, "pos", val), size=lambda inst, val, rect=r: setattr(rect, "size", val))
+            
             day = ".".join(reversed(e["ts"][:10].split("-")))
             tm = e["ts"][11:16]
             bpd = f'{e["bp_sys"]}/{e["bp_dia"]}' if e["bp_sys"] and e["bp_dia"] else "—"
-            for txt, wdt in ((f"{day} {tm}", 0.32), (e["type"][:10], 0.22), (f'{e["intensity"]}/10', 0.14), (dur_text(e["duration_min"] or 0), 0.16), (bpd, 0.16)):
-                row.add_widget(Label(text=txt, font_size="11sp", size_hint_x=wdt, color=INK))
+            
+            data_box = BoxLayout(size_hint_x=1)
+            for txt, wdt in ((f"{day} {tm}", 0.30), (e["type"][:10], 0.22), (f'{e["intensity"]}/10', 0.14), (dur_text(e["duration_min"] or 0), 0.16), (bpd, 0.14)):
+                data_box.add_widget(Label(text=txt, font_size="11sp", size_hint_x=wdt, color=INK))
+            row.add_widget(data_box)
+            
+            btn = Button(text=">", size_hint_x=None, width=dp(30), background_normal='', background_color=(0, 0, 0, 0), color=ACC, bold=True, font_size="18sp")
+            btn.bind(on_release=lambda *a, edata=e: self.show_details(edata))
+            row.add_widget(btn)
+            
             self.table.add_widget(row)
+
+    def show_details(self, e):
+        box = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(8))
+        info = BoxLayout(orientation="vertical", spacing=dp(4))
+        
+        def mk_lbl(txt):
+            lbl = Label(text=txt, color=INK, size_hint_y=None, height=dp(24), halign="left", valign="middle")
+            lbl.bind(size=lambda s, v: setattr(s, 'text_size', (v[0], None)))
+            return lbl
+            
+        info.add_widget(mk_lbl(f"Дата: {e['ts'][:10]}"))
+        info.add_widget(mk_lbl(f"Время: {e['ts'][11:16]}"))
+        info.add_widget(mk_lbl(f"Характер: {e['type']}"))
+        info.add_widget(mk_lbl(f"Боль: {e['intensity']}/10"))
+        info.add_widget(mk_lbl(f"Длительность: {dur_text(e['duration_min'])}"))
+        info.add_widget(mk_lbl(f"Локализация: {e['side']}"))
+        if e["triggers"]:
+            info.add_widget(mk_lbl(f"Триггеры: {e['triggers']}"))
+        if e["medication"]:
+            info.add_widget(mk_lbl(f"Лекарства: {e['medication']}"))
+        if e["note"]:
+            info.add_widget(mk_lbl(f"Заметки: {e['note']}"))
+            
+        box.add_widget(info)
+        box.add_widget(Widget())
+        
+        btns = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(8))
+        del_btn = Button(text="Удалить", background_normal='', background_color=BAD, bold=True)
+        close_btn = Button(text="Закрыть", background_normal='', background_color=ACC, bold=True)
+        
+        pop = Popup(title="Детали эпизода", content=box, size_hint=(0.9, 0.6))
+        
+        def do_delete(*a):
+            self.db.conn.execute("DELETE FROM episodes WHERE id = ?", (e["id"],))
+            self.db.conn.commit()
+            pop.dismiss()
+            self.refresh()
+            show_message("Эпизод удалён")
+            
+        del_btn.bind(on_release=do_delete)
+        close_btn.bind(on_release=pop.dismiss)
+        
+        btns.add_widget(del_btn)
+        btns.add_widget(close_btn)
+        box.add_widget(btns)
+        
+        pop.open()
 
 
 class NewEpisodeScreen(Screen):
@@ -412,7 +460,7 @@ class NewEpisodeScreen(Screen):
         outer = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
         
         hdr = BoxLayout(size_hint_y=None, height=dp(38))
-        back = Button(text="← Назад", size_hint_x=None, width=dp(90))
+        back = Button(text="← Назад", size_hint_x=None, width=dp(90), background_normal='', background_color=LIGHT, color=INK)
         back.bind(on_release=lambda *a: setattr(self.manager, "current", "main"))
         hdr.add_widget(back)
         hdr.add_widget(Label(text="Новый приступ", bold=True, font_size="16sp", color=INK))
@@ -427,33 +475,41 @@ class NewEpisodeScreen(Screen):
             lbl.bind(size=lambda s, v: setattr(s, 'text_size', (v[0], None)))
             form.add_widget(lbl)
 
-        def add_field(label_text, widget, h=40):
+        def add_field(label_text, widget, h=44):
             box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(2))
             box.bind(minimum_height=box.setter("height"))
             lbl = Label(text=label_text, color=MUTED, size_hint_y=None, height=dp(20), halign='left', valign='middle')
             lbl.bind(size=lambda s, v: setattr(s, 'text_size', (v[0], None)))
+            
+            if hasattr(widget, 'background_normal'):
+                widget.background_normal = ''
+                widget.background_color = CARD
+            if hasattr(widget, 'foreground_color'):
+                widget.foreground_color = INK
+                
             widget.size_hint_y = None
             widget.height = dp(h)
-            widget.background_color = CARD
-            widget.foreground_color = INK
+            
             box.add_widget(lbl)
             box.add_widget(widget)
             form.add_widget(box)
 
-        # --- 1. Когда ---
+        # 1. Когда
         add_header("Когда")
         now = dt.datetime.now()
-        self.date_input = TextInput(text=dt.date.today().isoformat(), multiline=False)
+        
+        self.date_input = TextInput(text=dt.date.today().isoformat(), multiline=False, padding=[dp(8), dp(10)])
         add_field("Дата (ГГГГ-ММ-ДД)", self.date_input)
         
-        self.time_input = TextInput(text=now.strftime("%H:%M"), multiline=False)
+        self.time_input = TextInput(text=now.strftime("%H:%M"), multiline=False, padding=[dp(8), dp(10)])
         add_field("Время начала (ЧЧ:ММ)", self.time_input)
         
-        self.end_input = TextInput(text=(now + dt.timedelta(minutes=30)).strftime("%H:%M"), multiline=False)
+        self.end_input = TextInput(text=(now + dt.timedelta(minutes=30)).strftime("%H:%M"), multiline=False, padding=[dp(8), dp(10)])
         add_field("Время окончания (ЧЧ:ММ)", self.end_input)
         
         self.dur_label = Label(text="30 мин", color=ACC, bold=True, size_hint_y=None, height=dp(24), halign="left")
-        add_field("Длительность (считается сама)", self.dur_label)
+        self.dur_label.bind(size=lambda s, v: setattr(s, 'text_size', (v[0], None)))
+        add_field("Длительность (считается сама)", self.dur_label, h=28)
 
         def upd_dur(*a):
             try:
@@ -464,17 +520,17 @@ class NewEpisodeScreen(Screen):
         self.time_input.bind(text=upd_dur)
         self.end_input.bind(text=upd_dur)
 
-        # --- 2. Как болело ---
+        # 2. Как болело
         add_header("Как болело")
         self.type_sp = Spinner(text="Пульсирующая", values=["Пульсирующая", "Сжимающая", "Тупая", "Колющая", "Другая"])
         add_field("Характер боли", self.type_sp)
 
-        self.int_slider = Slider(min=0, max=10, value=5, step=1)
+        int_row = BoxLayout(size_hint_y=None, height=dp(44))
+        self.int_slider = Slider(min=0, max=10, value=5, step=1, size_hint_y=None, height=dp(44))
         self.int_label = Label(text="5", bold=True, color=ACC, size_hint_x=None, width=dp(40), font_size="16sp")
-        int_row = BoxLayout(size_hint_y=None, height=dp(40))
+        self.int_slider.bind(value=lambda inst, val: setattr(self.int_label, "text", str(int(val))))
         int_row.add_widget(self.int_slider)
         int_row.add_widget(self.int_label)
-        self.int_slider.bind(value=lambda inst, val: setattr(self.int_label, "text", str(int(val))))
         add_field("Интенсивность (0-10)", int_row)
 
         self.side_sp = Spinner(text="Левая сторона", values=["Левая сторона", "Правая сторона", "Двусторонняя", "Другая"])
@@ -483,52 +539,49 @@ class NewEpisodeScreen(Screen):
         self.nausea_sp = Spinner(text="Нет", values=["Нет", "Незначительная", "Заметная"])
         add_field("Тошнота", self.nausea_sp)
 
-        # --- 3. Что ещё было ---
+        # 3. Что ещё было
         add_header("Что ещё было")
-        row_cb1 = BoxLayout(size_hint_y=None, height=dp(34), spacing=dp(8))
-        self.aura_cb = CheckBox(size_hint_x=None, width=dp(36))
-        row_cb1.add_widget(self.aura_cb)
-        row_cb1.add_widget(Label(text="Аура (зрительные нарушения)", color=INK, font_size="12sp"))
-        form.add_widget(row_cb1)
+        self.aura_row = CheckRow("Аура (зрительные нарушения)")
+        form.add_widget(self.aura_row)
 
-        row_cb2 = BoxLayout(size_hint_y=None, height=dp(34), spacing=dp(8))
-        self.effort_cb = CheckBox(size_hint_x=None, width=dp(36))
-        row_cb2.add_widget(self.effort_cb)
-        row_cb2.add_widget(Label(text="Усиление при нагрузке", color=INK, font_size="12sp"))
-        form.add_widget(row_cb2)
+        self.effort_row = CheckRow("Усиление при нагрузке")
+        form.add_widget(self.effort_row)
 
-        # --- 4. Причины ---
+        # 4. Причины
         add_header("Возможные причины")
-        self.trigger_cbs = {}
+        self.trigger_rows = {}
         for t in self.db.get_triggers():
-            row = BoxLayout(size_hint_y=None, height=dp(34), spacing=dp(6))
-            cb = CheckBox(size_hint_x=None, width=dp(36))
-            self.trigger_cbs[t["id"]] = cb
-            row.add_widget(cb)
-            row.add_widget(Label(text=t["name"], color=INK, font_size="12sp"))
+            row = CheckRow(t["name"])
+            self.trigger_rows[t["id"]] = row
             form.add_widget(row)
 
-        # --- 5. Давление и лекарство ---
+        # 5. Давление и лекарство
         add_header("Давление и лекарство")
-        bp_row = BoxLayout(size_hint_y=None, height=dp(40), spacing=dp(6))
-        self.bp_sys = TextInput(text="120", multiline=False, input_filter="int")
-        self.bp_dia = TextInput(text="80", multiline=False, input_filter="int")
+        bp_row = BoxLayout(size_hint_y=None, height=dp(44), spacing=dp(6))
+        self.bp_sys = TextInput(text="120", multiline=False, input_filter="int", padding=[dp(8), dp(10)])
+        self.bp_dia = TextInput(text="80", multiline=False, input_filter="int", padding=[dp(8), dp(10)])
+        
+        for inp in (self.bp_sys, self.bp_dia):
+            inp.background_normal = ''
+            inp.background_color = CARD
+            inp.foreground_color = INK
+            
         bp_row.add_widget(self.bp_sys)
-        bp_row.add_widget(Label(text="/", size_hint_x=None, width=dp(20), color=INK))
+        bp_row.add_widget(Label(text="/", size_hint_x=None, width=dp(20), color=INK, font_size="18sp"))
         bp_row.add_widget(self.bp_dia)
         add_field("Давление (верхнее/нижнее)", bp_row)
 
-        self.med_input = TextInput(multiline=False)
+        self.med_input = TextInput(multiline=False, padding=[dp(8), dp(10)])
         add_field("Препараты", self.med_input)
 
-        self.note_input = TextInput(multiline=False)
+        self.note_input = TextInput(multiline=False, padding=[dp(8), dp(10)])
         add_field("Заметки", self.note_input)
 
         scroll.add_widget(form)
         outer.add_widget(scroll)
 
-        save_bar = BoxLayout(size_hint_y=None, height=dp(56), spacing=dp(6))
-        save_btn = Button(text="Сохранить приступ", background_color=ACC, bold=True)
+        save_bar = BoxLayout(size_hint_y=None, height=dp(60), spacing=dp(6), padding=[0, dp(6)])
+        save_btn = Button(text="Сохранить приступ", background_normal='', background_color=ACC, bold=True, font_size="16sp")
         save_btn.bind(on_release=self.save)
         save_bar.add_widget(save_btn)
         outer.add_widget(save_bar)
@@ -543,8 +596,8 @@ class NewEpisodeScreen(Screen):
                 "ts": ts, "type": self.type_sp.text,
                 "intensity": intensity, "side": self.side_sp.text,
                 "duration_min": calc_dur(self.time_input.text.strip(), self.end_input.text.strip()),
-                "aura": int(self.aura_cb.active),
-                "effort": int(self.effort_cb.active),
+                "aura": int(self.aura_row.active),
+                "effort": int(self.effort_row.active),
                 "nausea": ["Нет", "Незначительная", "Заметная"].index(self.nausea_sp.text),
                 "medication": self.med_input.text.strip(),
                 "note": self.note_input.text.strip(),
@@ -553,7 +606,7 @@ class NewEpisodeScreen(Screen):
                 a, b = int(self.bp_sys.text), int(self.bp_dia.text)
                 if 60 <= a <= 260 and 30 <= b <= 160 and a > b:
                     d["bp_sys"], d["bp_dia"] = a, b
-            trig_ids = [tid for tid, cb in self.trigger_cbs.items() if cb.active]
+            trig_ids = [tid for tid, row in self.trigger_rows.items() if row.active]
             self.db.add_episode(d, trig_ids)
             show_message("Эпизод сохранён")
             self.manager.current = "main"
@@ -567,16 +620,25 @@ class AnalysisScreen(Screen):
         self.db = db
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(8))
         hdr = BoxLayout(size_hint_y=None, height=dp(38))
-        back = Button(text="← Назад", size_hint_x=None, width=dp(90))
+        back = Button(text="← Назад", size_hint_x=None, width=dp(90), background_normal='', background_color=LIGHT, color=INK)
         back.bind(on_release=lambda *a: setattr(self.manager, "current", "main"))
         hdr.add_widget(back)
         hdr.add_widget(Label(text="Анализ триггеров", bold=True, font_size="16sp", color=INK))
         root.add_widget(hdr)
+        
         self.content = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         self.content.bind(minimum_height=self.content.setter("height"))
         scroll = ScrollView()
         scroll.add_widget(self.content)
         root.add_widget(scroll)
+        
+        bottom = BoxLayout(size_hint_y=None, height=dp(56), padding=[0, dp(8)])
+        demo_btn = Button(text="Загрузить демо-данные", size_hint_y=None, height=dp(44), 
+                          background_normal='', background_color=LIGHT, color=INK, bold=True)
+        demo_btn.bind(on_release=self._load_demo)
+        bottom.add_widget(demo_btn)
+        root.add_widget(bottom)
+        
         self.add_widget(root)
 
     def on_pre_enter(self, *a):
@@ -586,16 +648,19 @@ class AnalysisScreen(Screen):
     def _refresh(self):
         self.content.clear_widgets()
         st = self.db.stats()
+        
         if st["n"] == 0:
-            self.content.add_widget(Label(text="Данных пока нет.\nДобавьте эпизоды или загрузите демо.", color=MUTED, size_hint_y=None, height=dp(80)))
-            b = Button(text="Загрузить демо-данные", size_hint_y=None, height=dp(44))
-            b.bind(on_release=self._load_demo)
-            self.content.add_widget(b)
+            self.content.add_widget(Label(
+                text="Данных пока нет.\nДобавьте эпизод или загрузите демо-данные.", 
+                color=MUTED, size_hint_y=None, height=dp(80), halign="center"))
             return
+            
         for t in (f"Всего эпизодов: {st['n']}", f"Средняя интенсивность: {st['avg_int']:.1f}/10",
                   f"Средняя длительность: {st['avg_dur']:.0f} мин", f"Эпизодов с препаратами: {st['with_med']}"):
             self.content.add_widget(Label(text=t, color=INK, size_hint_y=None, height=dp(24)))
-        self.content.add_widget(Label(text="Частота триггеров:", bold=True, color=ACC, size_hint_y=None, height=dp(30)))
+            
+        self.content.add_widget(Label(text="\nЧастота триггеров:", bold=True, color=ACC, size_hint_y=None, height=dp(30)))
+        
         for name, cnt, total, share in self.db.trigger_analysis():
             if cnt == 0: continue
             color = GOOD if share < 0.3 else WARN if share < 0.5 else BAD
@@ -605,8 +670,12 @@ class AnalysisScreen(Screen):
             self.content.add_widget(row)
 
     def _load_demo(self, *a):
+        self.db.conn.execute("DELETE FROM episode_triggers")
+        self.db.conn.execute("DELETE FROM episodes")
+        self.db.conn.commit()
+        
         names = ["Недосып", "Стресс", "Погода"]
-        for _ in range(20):
+        for _ in range(25):
             days = random.randint(0, 40)
             date = dt.date.today() - dt.timedelta(days=days)
             h = random.randint(9, 20)
@@ -622,6 +691,8 @@ class AnalysisScreen(Screen):
                 "medication": random.choice(["", "Ибупрофен 400 мг"]), "note": "",
                 "bp_sys": random.choice([None, 120, 130, 150]), "bp_dia": random.choice([None, 80, 85, 95]),
             }, ids)
+            
+        show_message("Демо-данные загружены!")
         self._refresh()
 
 
@@ -631,13 +702,15 @@ class DynamicScreen(Screen):
         self.db = db
         root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
         hdr = BoxLayout(size_hint_y=None, height=dp(38))
-        back = Button(text="← Назад", size_hint_x=None, width=dp(90))
+        back = Button(text="← Назад", size_hint_x=None, width=dp(90), background_normal='', background_color=LIGHT, color=INK)
         back.bind(on_release=lambda *a: setattr(self.manager, "current", "main"))
         hdr.add_widget(back)
         hdr.add_widget(Label(text="Динамика", bold=True, font_size="16sp", color=INK))
         root.add_widget(hdr)
+        
         self.chart = ChartWidget(size_hint_y=None, height=dp(220))
         root.add_widget(self.chart)
+        
         self.text = Label(text="", color=INK, halign="left", valign="top", size_hint_y=None, height=dp(300))
         self.text.bind(size=lambda inst, val: setattr(self.text, "text_size", val))
         scroll = ScrollView()
@@ -651,6 +724,7 @@ class DynamicScreen(Screen):
     def on_pre_enter(self, *a):
         self.chart.set_series(self.db.daily_series())
         self.text.text = (self.db.summary_7d() + "\n\n" + "ПОДСКАЗКИ\n" + self.db.advice())
+        Clock.schedule_once(lambda dt: self.chart._draw(), 0.1)
         return True
 
 
@@ -660,7 +734,7 @@ class HelpScreen(Screen):
         self.db = db
         root = BoxLayout(orientation="vertical", padding=dp(8), spacing=dp(6))
         hdr = BoxLayout(size_hint_y=None, height=dp(38))
-        back = Button(text="← Назад", size_hint_x=None, width=dp(90))
+        back = Button(text="← Назад", size_hint_x=None, width=dp(90), background_normal='', background_color=LIGHT, color=INK)
         back.bind(on_release=lambda *a: setattr(self.manager, "current", "main"))
         hdr.add_widget(back)
         hdr.add_widget(Label(text="Помощь при мигрени", bold=True, font_size="16sp", color=INK))
@@ -676,9 +750,9 @@ class HelpScreen(Screen):
         self.active_lbl = Label(text="Нажмите «Приступ начался».", color=ACC, size_hint_y=None, height=dp(28), font_size="12sp")
         card.add_widget(self.active_lbl)
         btn_row = BoxLayout(size_hint_y=None, height=dp(52), spacing=dp(8))
-        s = Button(text="▶ Начался", background_color=GOOD)
+        s = Button(text="▶ Начался", background_normal='', background_color=GOOD, bold=True)
         s.bind(on_release=self.start_now)
-        e = Button(text="■ Закончился", background_color=BAD)
+        e = Button(text="■ Закончился", background_normal='', background_color=BAD, bold=True)
         e.bind(on_release=self.stop_now)
         btn_row.add_widget(s)
         btn_row.add_widget(e)
@@ -738,7 +812,7 @@ class ReportScreen(Screen):
         self.db = db
         root = BoxLayout(orientation="vertical", padding=dp(10), spacing=dp(10))
         hdr = BoxLayout(size_hint_y=None, height=dp(38))
-        back = Button(text="← Назад", size_hint_x=None, width=dp(90))
+        back = Button(text="← Назад", size_hint_x=None, width=dp(90), background_normal='', background_color=LIGHT, color=INK)
         back.bind(on_release=lambda *a: setattr(self.manager, "current", "main"))
         hdr.add_widget(back)
         hdr.add_widget(Label(text="Отчёт", bold=True, font_size="16sp", color=INK))
@@ -748,7 +822,7 @@ class ReportScreen(Screen):
         self.status.bind(size=lambda inst, val: setattr(inst, "text_size", val))
         root.add_widget(self.status)
         
-        b = Button(text="Сформировать сводку для врача", size_hint_y=None, height=dp(48), background_color=ACC)
+        b = Button(text="Сформировать сводку для врача", size_hint_y=None, height=dp(48), background_normal='', background_color=ACC, bold=True)
         b.bind(on_release=self.generate)
         root.add_widget(b)
         self.add_widget(root)
@@ -785,7 +859,7 @@ class HeadacheApp(App):
     title = "Голова под контролем"
 
     def build(self):
-        Window.clearcolor = BG  # Принудительный светло-серый фон
+        Window.clearcolor = BG
         self.db = Database(self._db_path())
         sm = ScreenManager(transition=SlideTransition())
         sm.add_widget(MainScreen(self.db, name="main"))
@@ -802,16 +876,6 @@ class HeadacheApp(App):
         return os.path.join(d, "headache.db")
 
     def get_report_dir(self):
-        try:
-            from android.storage import primary_external_storage_path  # noqa
-            from android.permissions import request_permissions, Permission
-            request_permissions([Permission.WRITE_EXTERNAL_STORAGE])
-            docs = os.path.join(primary_external_storage_path(), "Documents")
-            if os.path.isdir(docs): return docs
-        except ImportError:
-            pass
-        desktop = os.path.join(os.path.expanduser("~"), "Documents")
-        if os.path.isdir(desktop): return desktop
         return self.user_data_dir
 
 
